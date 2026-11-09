@@ -1,0 +1,83 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+local Whitelist = {
+	["LinkedSword"] = true
+}
+
+local function spawnItem(itemName)
+	local clone = ReplicatedStorage:WaitForChild(itemName):Clone()
+	local handle = clone:WaitForChild("Handle")
+	handle.Anchored = true
+	clone.Parent = workspace
+	local equipCheck
+	equipCheck = clone.Equipped:Connect(function()
+		handle.Anchored = false
+		equipCheck:Disconnect()
+	end)
+	local voidCheck
+	voidCheck = RunService.Heartbeat:Connect(function()
+		if handle.Position.Y < workspace.FallenPartsDestroyHeight + 50 then
+			voidCheck:Disconnect()
+			clone:Destroy()
+		end
+	end)
+	clone.Destroying:Connect(function()
+		equipCheck:Disconnect()
+		voidCheck:Disconnect()
+		spawnItem(itemName)
+	end)
+end
+
+local function dropWhitelistedItems(container, position)
+	for _, item in container:GetChildren() do
+		if item:IsA("Tool") and Whitelist[item.Name] then
+			item.Parent = workspace
+			item:PivotTo(CFrame.new(position))
+		end
+	end
+end
+
+local function dropForCharacter(player, character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	local dropPosition = root.Position
+	dropWhitelistedItems(character, dropPosition)
+	local backpack = player:FindFirstChild("Backpack")
+	if backpack then
+		dropWhitelistedItems(backpack, dropPosition)
+	end
+end
+
+local function handlePlayer(player)
+	local function onCharacterAdded(character)
+		local humanoid = character:WaitForChild("Humanoid")
+		humanoid.Died:Connect(function()
+			dropForCharacter(player, character)
+		end)
+	end
+	player.CharacterAdded:Connect(onCharacterAdded)
+	if player.Character then
+		onCharacterAdded(player.Character)
+	end
+	player.CharacterRemoving:Connect(function(character)
+		dropForCharacter(player, character)
+	end)
+end
+
+Players.PlayerAdded:Connect(handlePlayer)
+for _, player in Players:GetPlayers() do
+	handlePlayer(player)
+end
+Players.PlayerRemoving:Connect(function(player)
+	if player.Character then
+		dropForCharacter(player, player.Character)
+	end
+end)
+
+for item, toggle in Whitelist do
+	if toggle then
+		spawnItem(item)
+	end
+end
